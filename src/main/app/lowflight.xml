@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:mulexml="http://www.mulesoft.org/schema/mule/xml" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/xml http://www.mulesoft.org/schema/mule/xml/current/mule-xml.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+    <http:listener-config name="HTTP_Listener_Configuration" host="0.0.0.0" port="8081" doc:name="HTTP Listener Configuration"/>
+    <db:mysql-config name="MySQL_Configuration" host="localhost" port="3306" user="root" password="root" database="training" doc:name="MySQL Configuration"/>
+    <db:mysql-config name="MySQL_Configuration1" host="localhost" port="3306" user="root" password="root" database="training1" doc:name="MySQL Configuration"/>
+    <flow name="lowflightFlow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/low" doc:name="HTTP"/>
+        <dw:transform-message metadata:id="514b37ef-d84b-4bda-9248-87dbae2fe38e" doc:name="Transform Message">
+            <dw:input-payload doc:sample="sample_data\empty.xml"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+{
+	flightName:payload.flight.actionType,
+	from:payload.flight.source,
+	to:payload.flight.destination,
+	fronDate:payload.flight.fromDate,
+	toDate:payload.flight.toDate
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <choice doc:name="Choice">
+            <when expression="payload.flightName=='all'">
+                <db:select config-ref="MySQL_Configuration" doc:name="all">
+                    <db:parameterized-query><![CDATA[select * from spicejet union select * from air_india order by price limit 1]]></db:parameterized-query>
+                </db:select>
+            </when>
+            <when expression="payload.flightName=='low'">
+                <flow-ref name="getAll" doc:name="getAll"/>
+            </when>
+            <otherwise>
+                <db:select config-ref="MySQL_Configuration" doc:name="Database">
+                    <db:dynamic-query><![CDATA[select * from #[payload.flightName]]]></db:dynamic-query>
+                </db:select>
+            </otherwise>
+        </choice>
+        <dw:transform-message metadata:id="57873a00-e63b-4232-93c3-81d951594878" doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/xml
+---
+{
+	flights: {
+		(payload map ((payload01 , indexOfPayload01) -> {
+			flight: {
+				source: payload01.from,
+				destination: payload01.to,
+				fromDate: payload01.from_date,
+				toDate: payload01.to_date,
+				price: payload01.price,
+				flightName: payload01.flight_name
+			} 
+		} 
+		))
+	} 
+}]]></dw:set-payload>
+        </dw:transform-message>
+    </flow>
+    <flow name="getAll">
+        <scatter-gather doc:name="Scatter-Gather">
+            <db:select config-ref="MySQL_Configuration" doc:name="airindia">
+                <db:parameterized-query><![CDATA[select * from air_india]]></db:parameterized-query>
+            </db:select>
+            <db:select config-ref="MySQL_Configuration1" doc:name="Database">
+                <db:parameterized-query><![CDATA[select * from flydubai]]></db:parameterized-query>
+            </db:select>
+        </scatter-gather>
+        <combine-collections-transformer doc:name="Combine Collections"/>
+    </flow>
+</mule>
